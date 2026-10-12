@@ -192,6 +192,12 @@ msg_ok "Template bereit: $TEMPLATE_STORE:vztmpl/$TEMPLATE"
 if pct status "$CT_ID" >/dev/null 2>&1; then
   msg_warn "CT $CT_ID existiert – ueberspringe Erstellung (Update-Modus)."
 else
+  # Stale Ueberrest frueherer Fehlversuche: Verzeichnis da, aber keine CT-Config.
+  # Der unprivilegierte Extract (UID 100000) scheitert sonst mit Permission denied.
+  if [[ -e "/var/lib/lxc/$CT_ID" ]]; then
+    msg_warn "Stale Verzeichnis /var/lib/lxc/$CT_ID ohne CT-Config – raeume auf (Fehlversuch)."
+    rm -rf "/var/lib/lxc/$CT_ID"
+  fi
   [[ -z "$PASSWORD_ARG" ]] && PASSWORD_ARG="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20)"
   msg_info "Erstelle CT $CT_ID ($HOSTNAME_ARG): $CORES vCPU / $RAM MB / ${DISK}G ..."
   pct create "$CT_ID" "${TEMPLATE_STORE}:vztmpl/${TEMPLATE}" \
