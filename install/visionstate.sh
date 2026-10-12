@@ -28,7 +28,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 APP="visionstate"                             # Container-Hostname + Service-Name
 APP_PORT="8099"                               # VisionState Web-UI + API
-INSTALLER_VERSION="2026-10-12.5"              # bei jedem Fix erhoehen (sichtbar im Log)
+INSTALLER_VERSION="2026-10-12.6"              # bei jedem Fix erhoehen (sichtbar im Log)
 UPSTREAM_REPO="https://github.com/oleost/VisionState"
 BRANCH="main"
 INSTALLER_REPO="https://github.com/HatchetMan111/VisionStateProxmox"
@@ -259,6 +259,11 @@ set -euo pipefail
     curl -LsSf https://astral.sh/uv/install.sh | sh
   fi
   export PATH=/root/.local/bin:$PATH
+  # WICHTIG: uv legt Python sonst unter /root/.local ab – das venv verlinkt nur
+  # dorthin und /root ist 700. Als User=visionstate waere der Interpreter nicht
+  # ausfuehrbar (systemd 203/EXEC). Darum systemweit nach /opt/uv-python.
+  export UV_PYTHON_INSTALL_DIR=/opt/uv-python
+  mkdir -p /opt/uv-python
   uv python install 3.14
   if [ ! -d /opt/visionstate/.git ]; then
     rm -rf /opt/visionstate
@@ -268,7 +273,14 @@ set -euo pipefail
     git -C /opt/visionstate checkout main
     git -C /opt/visionstate pull --ff-only || true
   fi
-  if [ ! -x /opt/visionstate/.venv/bin/python ] || [ ! -x /opt/visionstate/.venv/bin/pip ]; then
+  # Venv neu bauen wenn: kein Python/pip drin, oder Python zeigt noch in das
+  # alte /root/.local-Ziel (vor dem UV_PYTHON_INSTALL_DIR-Fix angelegt).
+  VENV_PY="$(readlink -f /opt/visionstate/.venv/bin/python 2>/dev/null || true)"
+  case "$VENV_PY" in
+    /root/*|"") NEED_VENV=1;;
+    *) NEED_VENV=0;;
+  esac
+  if [ ! -x /opt/visionstate/.venv/bin/python ] || [ ! -x /opt/visionstate/.venv/bin/pip ] || [ "$NEED_VENV" = 1 ]; then
     rm -rf /opt/visionstate/.venv
     uv venv --seed --python 3.14 /opt/visionstate/.venv
   fi
