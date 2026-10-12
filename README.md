@@ -67,10 +67,42 @@ Erwartete Schlussausgabe (Beispiel):
 ══════════════════════════════════════════════════════════
 ```
 
-Eigene Nutzung: Kamera als `camera.*` (HA) oder RTSP/HTTP-Snapshot-URL in der Web UI anlegen,
-MQTT/HA optional via `/etc/visionstate/env` (`VISIONSTATE_MQTT_HOST`, `HA_URL`, `HA_TOKEN`),
-dann `systemctl restart visionstate`.
+Eigene Nutzung: Kamera als `camera.*` (HA) oder RTSP/HTTP-Snapshot-URL in der Web UI anlegen.
+Sensor anlegen, Labeln, Trigger, Review-Queue, History: alles in der Web UI
+(`http://<LXC-IP>:8099`). Nur die HA-Anbindung selbst steht in `/etc/visionstate/env`
+(siehe unten) – kein UI-Feld (Henne-Ei: ohne Broker keine Publikation, Token gehoert nicht
+in ein login-loses Webformular).
 Vollständige Anleitung (Sensor anlegen, Trigger, Review-Queue): Upstream `visionstate/DOCS.md`.
+
+## Home Assistant anbinden (MQTT + Kameras)
+
+Voraussetzungen in HA: **Mosquitto broker**-Add-on (+ dort ein Login, z. B. User
+`visionstate`) und die **MQTT**-Integration (Host `core-mosquitto` bzw. HA-IP, Port 1883,
+gleiche Credentials). Langlebigen Token holen: HA → Profil → Sicherheit →
+**Langlebige Zugriffstoken**.
+
+Dann im Container (`pct enter <CT>`), `/etc/visionstate/env` editieren:
+
+```text
+VISIONSTATE_MQTT_HOST=192.168.x.x      # IP des Home Assistant
+VISIONSTATE_MQTT_PORT=1883
+VISIONSTATE_MQTT_USERNAME=visionstate
+VISIONSTATE_MQTT_PASSWORD=<mosquitto-passwort>
+HA_URL=http://192.168.x.x:8123
+HA_TOKEN=<langlebiger-token>
+```
+
+Danach:
+
+```bash
+systemctl restart visionstate
+journalctl -u visionstate -n 30   # MQTT "connected", keine Auth-Fehler
+```
+
+Prüfen: In der Web UI stehen alle `camera.*`-Entitäten zur Wahl; in HA erscheinen
+die Sensoren automatisch via MQTT-Discovery (z. B. `sensor.garage_door` + Confidence,
+letztes Bild, Check-now-Button, Enable-Switch). Beispiel-Automation: siehe Upstream-README
+(„Example: notify when the garage door has been open for 10 minutes").
 
 ## Reboot-Test (Reboot-sicher belegen)
 
