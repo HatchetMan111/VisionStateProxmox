@@ -12,8 +12,8 @@
 # Laeuft:   vollstaendig lokal im LXC, keine externen Cloud-Dienste noetig
 # Host:     DAS SKRIPT LAEUFT AUF DEM PROXMOX-HOST (nicht im Container!)
 # Usage:
-#   bash -c "$(wget -qLO - https://raw.githubusercontent.com/USER/VisionState-Proxmox/main/install/visionstate.sh)"
-#   CT_ID=150 CORES=2 RAM=3072 DISK=12 bash -c "$(wget -qLO - https://raw.githubusercontent.com/USER/VisionState-Proxmox/main/install/visionstate.sh)"
+#   bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/VisionStateProxmox/main/install/visionstate.sh)"
+#   CT_ID=150 CORES=2 RAM=3072 DISK=12 bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/VisionStateProxmox/main/install/visionstate.sh)"
 #   bash visionstate.sh --ctid 150 --cores 2 --memory 3072 --disk 12 --bridge vmbr0 --debug
 #
 # Hinweis: Unit wird live aus diesem Repo geladen (SERVICE_URL unten).
@@ -30,8 +30,8 @@ APP="visionstate"                             # Container-Hostname + Service-Nam
 APP_PORT="8099"                               # VisionState Web-UI + API
 UPSTREAM_REPO="https://github.com/oleost/VisionState"
 BRANCH="main"
-INSTALLER_REPO="https://github.com/USER/VisionState-Proxmox"
-SERVICE_URL="https://raw.githubusercontent.com/USER/VisionState-Proxmox/main/systemd/visionstate.service"
+INSTALLER_REPO="https://github.com/HatchetMan111/VisionStateProxmox"
+SERVICE_URL="https://raw.githubusercontent.com/HatchetMan111/VisionStateProxmox/main/systemd/visionstate.service"
 
 DEFAULT_CORES="2"                             # vCPU (KI-Inferenz CPU-only)
 DEFAULT_RAM="3072"                            # RAM in MB (Modelle: DINOv2 + D-FINE + OCR)

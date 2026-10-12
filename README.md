@@ -10,16 +10,16 @@
 ## Einzeiler (auf dem Proxmox-Host als root)
 
 ```bash
-bash -c "$(wget -qLO - https://raw.githubusercontent.com/USER/VisionState-Proxmox/main/install/visionstate.sh)"
+bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/VisionStateProxmox/main/install/visionstate.sh)"
 ```
 
-`USER` oben durch deinen Fork-Namen ersetzen (Installer-Repo).
+Installer-Repo: `https://github.com/HatchetMan111/VisionStateProxmox`.
 (Unit lädt das Script von dort; ohne Netz greift der Inline-Fallback.)
 
 Anpassungen per Umgebungsvariable oder Flag (ID immer **nächste freie**, außer gesetzt):
 
 ```bash
-CT_ID=150 CORES=2 RAM=3072 DISK=12 bash -c "$(wget -qLO - https://raw.githubusercontent.com/USER/VisionState-Proxmox/main/install/visionstate.sh)"
+CT_ID=150 CORES=2 RAM=3072 DISK=12 bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/VisionStateProxmox/main/install/visionstate.sh)"
 bash visionstate.sh --ctid 150 --cores 2 --memory 3072 --disk 12 --bridge vmbr0 --storage local-lvm
 bash visionstate.sh --ctid 100 --rebuild   # Update inkl. Frontend-Neubau
 bash visionstate.sh --debug   # = bash -x, komplette Fehlermeldungskette + Log unter /tmp/visionstate-install-*.log
