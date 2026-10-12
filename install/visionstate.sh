@@ -61,8 +61,10 @@ DISK_ARG="${DISK:-$DEFAULT_DISK}"
 
 DEBUG="${DEBUG:-0}"
 REBUILD="${REBUILD:-0}"
-# Root-Passwort landet im Log/Summary – Datei von Anfang an nur fuer root.
-umask 077
+# WICHTIG: kein umask 077 – pct create wuerde /var/lib/lxc/<ID> sonst mit 700
+# anlegen und der unprivilegierte Extract (UID 100000) scheitert schon an der
+# Pfad-Traversierung mit Permission denied (bewiesen: 755 geht, 700 kracht).
+# Stattdessen normale Rechte; nur die Logdatei wird 600 (Root-Passwort drin).
 LOG_FILE="/tmp/${APP}-install-$(date +%F-%H%M%S).log"
 touch "$LOG_FILE" && chmod 600 "$LOG_FILE"
 
@@ -208,6 +210,9 @@ else
     --unprivileged "$UNPRIVILEGED" --features "$FEATURES" \
     --onboot 1 --start 0 \
     --password "$PASSWORD_ARG"
+  # Guertel-und-Hosentraeger: Traversierung fuer den unprivilegierten Extract
+  # sicherstellen (fremde restriktive umask wuerde sonst 700 hinterlassen).
+  chmod 755 "/var/lib/lxc/$CT_ID" 2>/dev/null || true
   msg_ok "CT $CT_ID erstellt (unprivilegiert, nesting, onboot=1)."
 fi
 
