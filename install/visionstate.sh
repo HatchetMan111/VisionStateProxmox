@@ -60,7 +60,11 @@ RAM_ARG="${RAM:-$DEFAULT_RAM}"
 DISK_ARG="${DISK:-$DEFAULT_DISK}"
 
 DEBUG="${DEBUG:-0}"
+REBUILD="${REBUILD:-0}"
+# Root-Passwort landet im Log/Summary – Datei von Anfang an nur fuer root.
+umask 077
 LOG_FILE="/tmp/${APP}-install-$(date +%F-%H%M%S).log"
+touch "$LOG_FILE" && chmod 600 "$LOG_FILE"
 
 # ---------------------------------------------------------------------------
 # Logging / Farben (Community-Scripts-Stil)
@@ -105,6 +109,7 @@ Optionen:
   --bridge NAME        Netzwerk-Bridge (Default: ${DEFAULT_BRIDGE})
   --password PW        Root-Passwort (Default: zufaellig generiert, wird angezeigt)
   --ssh-key PATH       SSH Public Key in den Container uebernehmen (optional)
+  --rebuild            Frontend neu bauen (sonst nur wenn dist fehlt)
   --debug              bash -x + maximale Fehlermeldungskette
   -h, --help           diese Hilfe
 EOF
@@ -127,6 +132,7 @@ while [[ $# -gt 0 ]]; do
     --template-store) TEMPLATE_STORE="$2"; shift 2;;
     --bridge) BRIDGE="$2"; shift 2;;
     --password) PASSWORD_ARG="$2"; shift 2;;
+    --rebuild) REBUILD="1"; shift;;
     --ssh-key) SSH_KEY_ARG="$2"; shift 2;;
     --debug) DEBUG="1"; set -x; shift;;
     -h|--help) usage; exit 0;;
@@ -199,12 +205,6 @@ else
   msg_ok "CT $CT_ID erstellt (unprivilegiert, nesting, onboot=1)."
 fi
 
-if [[ -n "$SSH_KEY_ARG" ]]; then
-  [[ -f "$SSH_KEY_ARG" ]] || { msg_error "SSH-Key nicht gefunden: $SSH_KEY_ARG"; exit 1; }
-  pct push "$CT_ID" "$SSH_KEY_ARG" /root/.ssh/authorized_keys 2>/dev/null \
-    || { pct exec "$CT_ID" -- mkdir -p /root/.ssh; pct push "$CT_ID" "$SSH_KEY_ARG" /root/.ssh/authorized_keys; }
-fi
-
 pct start "$CT_ID" 2>/dev/null || true
 msg_info "Warte auf Container-Netz ..."
 CT_IP=""
@@ -216,13 +216,21 @@ done
 [[ -n "${CT_IP:-}" ]] || { msg_error "Keine Container-IP (pct exec hostname -I). Netzwerk/Bridge pruefen."; exit 1; }
 msg_ok "Container-IP: $CT_IP"
 
+# SSH-Key erst nach Start (pct push/exec braucht laufenden Container)
+if [[ -n "$SSH_KEY_ARG" ]]; then
+  [[ -f "$SSH_KEY_ARG" ]] || { msg_error "SSH-Key nicht gefunden: $SSH_KEY_ARG"; exit 1; }
+  pct exec "$CT_ID" -- mkdir -p /root/.ssh
+  pct push "$CT_ID" "$SSH_KEY_ARG" /root/.ssh/authorized_keys
+  msg_ok "SSH-Key uebernommen."
+fi
+
 # ---------------------------------------------------------------------------
 # 4. VisionState im Container (via pct exec, idempotent)
 # ---------------------------------------------------------------------------
 msg_info "Installiere VisionState im Container (uv Python 3.14 + venv + pip + npm-Build, ohne Docker) ..."
 # Hinweis: aeussere Single-Quotes – der Block laeuft dadurch 1:1 im Container,
 # ohne dass die Host-Shell $ oder $(...) anfasst (kein Escaping noetig).
-pct exec "$CT_ID" -- bash -c '
+pct exec "$CT_ID" -- env REBUILD="$REBUILD" bash -c '
 # shellcheck disable=SC2034,SC2154
 # SC2034: Pfad-Variablen unten sind Doku + Single-Source (Container-Block nutzt
 # Literale, da aeussere Vars nicht per pct exec vererbt werden).
@@ -257,13 +265,15 @@ set -euo pipefail
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs
   fi
-  if [ ! -d /opt/visionstate/visionstate/frontend/dist ]; then
+  if [ ! -d /opt/visionstate/visionstate/frontend/dist ] || [ "${REBUILD:-0}" = 1 ]; then
     cd /opt/visionstate/visionstate/frontend
     npm ci --no-audit --no-fund
     npm run build
+    cd /opt/visionstate/visionstate/backend
   fi
   mkdir -p /var/lib/visionstate /var/lib/visionstate-media /etc/visionstate
   if [ -z "$(ls -A /var/lib/visionstate/models 2>/dev/null || true)" ]; then
+    cd /opt/visionstate/visionstate/backend
     VISIONSTATE_BUNDLED_MODELS=/var/lib/visionstate/models /opt/visionstate/.venv/bin/python -m visionstate.backbones /var/lib/visionstate/models
   fi
   chown -R visionstate:visionstate /opt/visionstate /var/lib/visionstate /var/lib/visionstate-media
@@ -278,8 +288,11 @@ pct exec "$CT_ID" -- test -d /opt/visionstate/visionstate/frontend/dist \
   || { msg_error "Installation unvollstaendig: Frontend-Dist fehlt (npm-Build)."; exit 1; }
 msg_ok "Checkout ok (venv + Frontend-Dist vorhanden)."
 
-# Env-File aus Defaults schreiben (idempotent, keine Secrets im Default)
-pct push "$CT_ID" /dev/stdin /etc/visionstate/env <<ENV_EOF
+# Env-File nur beim Erst-Setup schreiben (Update behaelt HA_TOKEN/MQTT-Einstellungen)
+if pct exec "$CT_ID" -- test -f /etc/visionstate/env; then
+  msg_ok "Env-File existiert – behalten (/etc/visionstate/env)."
+else
+  pct push "$CT_ID" /dev/stdin /etc/visionstate/env <<'ENV_EOF'
 VISIONSTATE_PORT=8099
 VISIONSTATE_DATA=/var/lib/visionstate
 VISIONSTATE_MEDIA=/var/lib/visionstate-media
@@ -290,16 +303,17 @@ VISIONSTATE_MQTT_PORT=1883
 HA_URL=
 HA_TOKEN=
 ENV_EOF
-pct exec "$CT_ID" -- chown root:visionstate /etc/visionstate/env
-pct exec "$CT_ID" -- chmod 640 /etc/visionstate/env
-msg_ok "Env-File geschrieben (/etc/visionstate/env, 640)."
+  pct exec "$CT_ID" -- chown root:visionstate /etc/visionstate/env
+  pct exec "$CT_ID" -- chmod 640 /etc/visionstate/env
+  msg_ok "Env-File geschrieben (/etc/visionstate/env, 640)."
+fi
 
 # systemd-Unit aus diesem Repo uebernehmen (faellt auf Inline-Unit zurueck)
 if pct exec "$CT_ID" -- curl -fsSL -o /etc/systemd/system/visionstate.service "$SERVICE_URL" 2>/dev/null; then
   msg_ok "visionstate.service aus Repo uebernommen."
 else
   msg_warn "Service-URL nicht erreichbar – schreibe Inline-Unit."
-  pct push "$CT_ID" /dev/stdin /etc/systemd/system/visionstate.service <<UNIT
+  pct push "$CT_ID" /dev/stdin /etc/systemd/system/visionstate.service <<'UNIT'
 [Unit]
 Description=VisionState – lokale KI-Kamera-Sensoren fuer Home Assistant
 Documentation=https://github.com/oleost/VisionState
@@ -310,7 +324,7 @@ Wants=network-online.target
 Type=simple
 User=visionstate
 Group=visionstate
-WorkingDirectory=/opt/visionstate
+WorkingDirectory=/opt/visionstate/visionstate/backend
 EnvironmentFile=/etc/visionstate/env
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/visionstate/.venv/bin/python -m visionstate
@@ -323,7 +337,8 @@ UNIT
 fi
 pct exec "$CT_ID" -- systemctl daemon-reload
 pct exec "$CT_ID" -- systemctl enable --now visionstate
-msg_ok "systemd-Service visionstate aktiviert (enable --now)."
+pct exec "$CT_ID" -- systemctl restart visionstate
+msg_ok "systemd-Service visionstate aktiviert (enable --now + restart)."
 
 # ---------------------------------------------------------------------------
 # 5. Verifikation: Service + Web UI
@@ -332,9 +347,9 @@ msg_info "Verifiziere Installation ..."
 pct exec "$CT_ID" -- systemctl is-active visionstate || { msg_error "systemd-Service visionstate ist nicht active."; pct exec "$CT_ID" -- systemctl status visionstate --no-pager || true; exit 1; }
 msg_ok "Service laeuft (systemctl is-active visionstate = active)."
 
-msg_info "Warte auf Web UI (max. 3 Min) ..."
+msg_info "Warte auf Web UI (max. 10 Min, Modell-Ladezeit) ..."
 WEB_OK=0
-for _ in $(seq 1 18); do
+for _ in $(seq 1 60); do
   if pct exec "$CT_ID" -- curl -fs -m 10 "http://localhost:${APP_PORT}/api/v1/status" >/dev/null 2>&1; then WEB_OK=1; break; fi
   sleep 10
 done

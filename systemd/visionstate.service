@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=visionstate
 Group=visionstate
-WorkingDirectory=/opt/visionstate
+WorkingDirectory=/opt/visionstate/visionstate/backend
 EnvironmentFile=/etc/visionstate/env
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/visionstate/.venv/bin/python -m visionstate

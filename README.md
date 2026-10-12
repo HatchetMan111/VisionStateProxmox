@@ -21,6 +21,7 @@ Anpassungen per Umgebungsvariable oder Flag (ID immer **nächste freie**, außer
 ```bash
 CT_ID=150 CORES=2 RAM=3072 DISK=12 bash -c "$(wget -qLO - https://raw.githubusercontent.com/USER/VisionState-Proxmox/main/install/visionstate.sh)"
 bash visionstate.sh --ctid 150 --cores 2 --memory 3072 --disk 12 --bridge vmbr0 --storage local-lvm
+bash visionstate.sh --ctid 100 --rebuild   # Update inkl. Frontend-Neubau
 bash visionstate.sh --debug   # = bash -x, komplette Fehlermeldungskette + Log unter /tmp/visionstate-install-*.log
 ```
 
@@ -87,7 +88,8 @@ im Container zeigt Neustart nach Reboot.
 ## Update / Deinstall
 
 ```bash
-bash visionstate.sh --ctid 100            # Update: idempotent (git pull + pip + rebuild + restart)
+bash visionstate.sh --ctid 100            # Update: idempotent (git pull + pip + restart; /etc/visionstate/env bleibt!)
+bash visionstate.sh --ctid 100 --rebuild  # Update inkl. Frontend-Neubau (sonst nur wenn dist fehlt)
 pct stop 100 && pct destroy 100          # Deinstall (vorher /var/lib/visionstate* sichern!)
 ```
 
