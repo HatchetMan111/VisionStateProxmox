@@ -28,6 +28,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 APP="visionstate"                             # Container-Hostname + Service-Name
 APP_PORT="8099"                               # VisionState Web-UI + API
+INSTALLER_VERSION="2026-10-12.5"              # bei jedem Fix erhoehen (sichtbar im Log)
 UPSTREAM_REPO="https://github.com/oleost/VisionState"
 BRANCH="main"
 INSTALLER_REPO="https://github.com/HatchetMan111/VisionStateProxmox"
@@ -85,7 +86,7 @@ msg_error() { echo -e "${C_RED}[ERROR]${C_RESET} $*" >&2; }
 
 # Vollstaendige Ausgabe ins Log (komplette Kette, nicht nur letzte Zeile)
 exec > >(tee -i "$LOG_FILE") 2>&1
-msg_info "Logdatei: $LOG_FILE"
+msg_info "VisionState-Installer v${INSTALLER_VERSION} – Logdatei: $LOG_FILE"
 [[ "$DEBUG" == "1" ]] && { echo "--- DEBUG: set -x aktiv ---"; set -x; }
 
 # Bei Fehlern: komplette Kette ausgeben (Befehl, Zeile, Exit-Code, Log-Verweis)
