@@ -1,0 +1,105 @@
+# VisionState auf Proxmox – Einzeiler-Installation (Community-Scripts-Stil)
+
+> Upstream-App (kein Teil dieses Ordners): `https://github.com/oleost/VisionState`
+> (lokale KI die Kamerabilder in Home-Assistant-Sensoren verwandelt – states/objects/readings,
+> DINOv2 ONNX + D-FINE + PaddleOCR, 100% lokal, CPU-only, Apache-2.0)
+> Dieser Ordner enthält **nur den Proxmox-Installer**: Install-Script + systemd-Unit.
+> Die App läuft nativ (Python 3.14 via uv + venv + pip, Frontend-Build mit Node, ohne Docker) –
+> vollständig lokal, keine Cloud nötig.
+
+## Einzeiler (auf dem Proxmox-Host als root)
+
+```bash
+bash -c "$(wget -qLO - https://raw.githubusercontent.com/USER/VisionState-Proxmox/main/install/visionstate.sh)"
+```
+
+`USER` oben durch deinen Fork-Namen ersetzen (Installer-Repo).
+(Unit lädt das Script von dort; ohne Netz greift der Inline-Fallback.)
+
+Anpassungen per Umgebungsvariable oder Flag (ID immer **nächste freie**, außer gesetzt):
+
+```bash
+CT_ID=150 CORES=2 RAM=3072 DISK=12 bash -c "$(wget -qLO - https://raw.githubusercontent.com/USER/VisionState-Proxmox/main/install/visionstate.sh)"
+bash visionstate.sh --ctid 150 --cores 2 --memory 3072 --disk 12 --bridge vmbr0 --storage local-lvm
+bash visionstate.sh --debug   # = bash -x, komplette Fehlermeldungskette + Log unter /tmp/visionstate-install-*.log
+```
+
+| Eigenschaft | Wert |
+|---|---|
+| App-Name / Hostname | `visionstate` |
+| Zweck | Lokale KI-Kamera-Sensoren: eigene States anlernen (Garagentor offen/zu), Objekte finden (Person/Auto/Tier), Zahlen ablesen (Zähler/Display) |
+| Tech-Stack | Python 3.14 (uv) + venv `/opt/visionstate/.venv` + `pip install -r visionstate/backend/requirements.txt`, Frontend Svelte+Vite (`npm ci && npm run build` → `visionstate/frontend/dist`), Modelle via `python -m visionstate.backbones` |
+| GitHub-Repo (Upstream) | `https://github.com/oleost/VisionState` |
+| Web UI | `http://<LXC-IP>:8099` (bind `0.0.0.0:8099`), Health = `GET /api/v1/status` |
+| Standard-Ressourcen | 2 vCPU / 3072 MB RAM / 12 GB Disk (Modelle + Build brauchen mehr als 4–8 GB Minimum) |
+| CT-ID | immer die **nächste freie ID** (`pvesh get /cluster/nextid`), außer `--ctid` gesetzt |
+| Template | `debian-12-standard` (neuestes auf Storage `local`) |
+| LXC-Features | **unprivilegiert** (`--unprivileged 1`), `nesting=1`, `onboot: 1` |
+
+Das Skript (`set -euo pipefail`, idempotent, `trap ERR` mit Befehl+Zeile+Exit-Code):
+1. prüft Host/Tools, nimmt die nächste freie CT-ID, erkennt RootFS-Storage
+   (bevorzugt `local-lvm`), lädt das neueste `debian-12-standard`-Template falls nötig,
+2. erstellt den LXC `visionstate` (`onboot: 1`, unprivilegiert),
+3. installiert im Container uv + Python 3.14 + venv, legt User `visionstate` an,
+   klont Upstream nach `/opt/visionstate`, installiert Backend (`pip`),
+   baut das Frontend (`npm ci && npm run build`), lädt die Modelle nach
+   `/var/lib/visionstate/models`, legt `/etc/visionstate/env` (640) und
+   `/var/lib/visionstate` + `/var/lib/visionstate-media` an,
+   schreibt `visionstate.service`, `systemctl enable --now visionstate`,
+4. verifiziert `systemctl is-active visionstate` + HTTP auf `localhost:8099/api/v1/status`
+   und gibt die finale URL + Container-IP aus.
+
+Erwartete Schlussausgabe (Beispiel):
+
+```text
+[OK]    Service läuft (systemctl is-active visionstate = active).
+[OK]    Web UI antwortet (HTTP 200 auf localhost:8099/api/v1/status).
+
+════════════════ INSTALLATION ERFOLGREICH ════════════════
+  App          : VisionState – lokale KI-Kamera-Sensoren
+  Container    : CT 100 (Hostname: visionstate, unprivilegiert, onboot=1)
+  Ressourcen   : 2 vCPU / 3072 MB RAM / 12 GB Disk
+  Web UI       : http://192.168.1.100:8099
+  ...
+  WARNUNG      : Ausserhalb von Home Assistant kein Login – nur im LAN oder hinter Proxy mit Auth!
+  Log          : /tmp/visionstate-install-2026-....log
+══════════════════════════════════════════════════════════
+```
+
+Eigene Nutzung: Kamera als `camera.*` (HA) oder RTSP/HTTP-Snapshot-URL in der Web UI anlegen,
+MQTT/HA optional via `/etc/visionstate/env` (`VISIONSTATE_MQTT_HOST`, `HA_URL`, `HA_TOKEN`),
+dann `systemctl restart visionstate`.
+Vollständige Anleitung (Sensor anlegen, Trigger, Review-Queue): Upstream `visionstate/DOCS.md`.
+
+## Reboot-Test (Reboot-sicher belegen)
+
+```bash
+CT=100
+pct reboot $CT
+sleep 60
+pct exec $CT -- systemctl is-active visionstate
+curl -fs http://<LXC-IP>:8099/api/v1/status >/dev/null && echo WEB_UI_OK
+```
+
+Erwartet: `active` + `WEB_UI_OK`. Beleg: `journalctl -u visionstate -n 50`
+im Container zeigt Neustart nach Reboot.
+
+## Update / Deinstall
+
+```bash
+bash visionstate.sh --ctid 100            # Update: idempotent (git pull + pip + rebuild + restart)
+pct stop 100 && pct destroy 100          # Deinstall (vorher /var/lib/visionstate* sichern!)
+```
+
+## Debugging
+
+- Jeder Fehler gibt Befehl + Zeile + Exit-Code aus, Voll-Log unter `/tmp/visionstate-install-*.log`.
+- `bash visionstate.sh --debug` für `bash -x`-Trace.
+- Im Container: `systemctl status visionstate --no-pager`, `journalctl -u visionstate -n 100`,
+  Health prüfen: `curl -v http://127.0.0.1:8099/api/v1/status`,
+  Env prüfen: `cat /etc/visionstate/env` (kein `HA_TOKEN` ins Log posten!).
+
+## Dateien
+
+- `install/visionstate.sh` – Proxmox-Einzeiler (Host, root).
+- `systemd/visionstate.service` – Unit (`After=network-online.target`, `Restart=always`, User `visionstate`).

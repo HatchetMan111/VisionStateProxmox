@@ -1,0 +1,19 @@
+[Unit]
+Description=VisionState – lokale KI-Kamera-Sensoren fuer Home Assistant
+Documentation=https://github.com/oleost/VisionState
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=visionstate
+Group=visionstate
+WorkingDirectory=/opt/visionstate
+EnvironmentFile=/etc/visionstate/env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/visionstate/.venv/bin/python -m visionstate
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
