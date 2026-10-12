@@ -267,8 +267,9 @@ set -euo pipefail
     git -C /opt/visionstate checkout main
     git -C /opt/visionstate pull --ff-only || true
   fi
-  if [ ! -x /opt/visionstate/.venv/bin/python ]; then
-    uv venv --python 3.14 /opt/visionstate/.venv
+  if [ ! -x /opt/visionstate/.venv/bin/python ] || [ ! -x /opt/visionstate/.venv/bin/pip ]; then
+    rm -rf /opt/visionstate/.venv
+    uv venv --seed --python 3.14 /opt/visionstate/.venv
   fi
   /opt/visionstate/.venv/bin/pip install --upgrade pip
   /opt/visionstate/.venv/bin/pip install -r /opt/visionstate/visionstate/backend/requirements.txt
