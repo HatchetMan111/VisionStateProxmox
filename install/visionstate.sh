@@ -255,7 +255,7 @@ set -euo pipefail
   # weder in Befehlen noch in Kommentaren – sie wuerden den aeusseren
   # bash -c Block der Host-Shell sprengen und den Rest still abschneiden.
   if [ ! -x /root/.local/bin/uv ]; then
-    curl -LsSf https://astral.sh/uv.sh | sh
+    curl -LsSf https://astral.sh/uv/install.sh | sh
   fi
   export PATH=/root/.local/bin:$PATH
   uv python install 3.14
