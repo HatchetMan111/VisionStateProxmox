@@ -28,7 +28,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 APP="visionstate"                             # Container-Hostname + Service-Name
 APP_PORT="8099"                               # VisionState Web-UI + API
-INSTALLER_VERSION="2026-10-12.6"              # bei jedem Fix erhoehen (sichtbar im Log)
+INSTALLER_VERSION="2026-10-12.7"              # bei jedem Fix erhoehen (sichtbar im Log)
 UPSTREAM_REPO="https://github.com/oleost/VisionState"
 BRANCH="main"
 INSTALLER_REPO="https://github.com/HatchetMan111/VisionStateProxmox"
@@ -265,6 +265,10 @@ set -euo pipefail
   export UV_PYTHON_INSTALL_DIR=/opt/uv-python
   mkdir -p /opt/uv-python
   uv python install 3.14
+  # /opt/visionstate gehoert User visionstate (chown am Block-Ende) – git als
+  # root wuerde sonst mit dubious ownership (Exit 128) abbrechen.
+  git config --global --get-all safe.directory 2>/dev/null | grep -qx /opt/visionstate \
+    || git config --global --add safe.directory /opt/visionstate
   if [ ! -d /opt/visionstate/.git ]; then
     rm -rf /opt/visionstate
     git clone --branch main https://github.com/oleost/VisionState /opt/visionstate
